@@ -1,79 +1,100 @@
 import streamlit as st
 import pandas as pd
 import joblib
+import os
 
-
-# MODELNI YUKLASH
-
-model = joblib.load("student_model.pkl")
-
-st.set_page_config(page_title="Talaba Bashorati", page_icon="🎓")
-st.title("🎓 Talabaning O‘tish / O‘tmasligini Bashorat qilish")
-
-st.write("Quyidagi ma’lumotlarni kiriting va natijani oling 👇")
-
-
-# INPUTLAR
-
-age = st.slider("Yosh", min_value=15, max_value=22, value=18)
-
-traveltime = st.selectbox(
-    "Maktabga borish vaqti",
-    options=[1, 2, 3, 4],
-    format_func=lambda x: {
-        1: "Juda yaqin",
-        2: "Yaqin",
-        3: "Uzoq",
-        4: "Juda uzoq"
-    }[x]
+st.set_page_config(
+    page_title="Talaba natijasini bashorat qilish",
+    page_icon="🎓",
+    layout="centered"
 )
 
-health = st.slider("Sog‘liq darajasi (1 = yomon, 5 = yaxshi)", 1, 5, 3)
+st.title("🎓 Talaba natijasini bashorat qilish")
+st.write("Kiritilgan ko‘rsatkichlar asosida talabaning **G3 >= 10** bo‘lish ehtimolini bashorat qiladi.")
 
-absences = st.number_input(
-    "Qoldirilgan darslar soni",
-    min_value=0,
-    max_value=100,
-    value=15
-)
+# ===== Yo'riqnoma (expander) =====
+with st.expander("ℹ️ Yo‘riqnoma va eslatmalarni ko‘rish"):
+    st.markdown("""
+**Bu ilova nima qiladi?**  
+Ushbu veb-ilova talabaning kiritilgan ko‘rsatkichlari asosida **yakuniy bahosi (G3) 10 dan yuqori bo‘lishi** ehtimolini bashorat qiladi.
 
-alcohol_level = st.slider(
-    "Alkogol darajasi",
-    min_value=0.0,
-    max_value=5.0,
-    value=1.0
-)
+**Qanday foydalaniladi?**
+1. Yuqoridan **modelni tanlang** (Logistic Regression / Random Forest / SVM).
+2. Pastdagi formaga kerakli qiymatlarni kiriting.
+3. **“🔮 Bashorat qilish”** tugmasini bosing.
+4. Natijada **“O‘TDI / O‘TMADI”** va (mavjud bo‘lsa) **ishonchlilik foizi** ko‘rsatiladi.
 
-parent_education_avg = st.slider(
-    "Ota-ona ta’lim darajasi (o‘rtacha)",
-    min_value=1.0,
-    max_value=5.0,
-    value=2.0
-)
+**Muhim eslatma:**  
+Bu natija **ML modeli bashorati** bo‘lib, 100% kafolat bermaydi. Real baholash va qarorlar uchun qo‘shimcha tahlil kerak bo‘lishi mumkin.
+""")
 
-social_activity = st.slider(
-    "Ijtimoiy faollik",
-    min_value=1.0,
-    max_value=5.0,
-    value=4.0
-)
+# ===== Modellar ro'yxati (fayl nomlarini moslang) =====
+MODELS = {
+    "Logistic Regression (eng yaxshi natija)": "lr_model.pkl",
+    "Random Forest": "rf_model.pkl",
+    "SVM": "svm_model.pkl",
+}
 
-academic_risk = st.slider(
-    "Akademik xavf darajasi",
-    min_value=0.0,
-    max_value=5.0,
-    value=2.0
-)
+st.subheader("🧠 Model tanlash")
+model_name = st.selectbox("Qaysi modeldan foydalanamiz?", list(MODELS.keys()))
+model_path = MODELS[model_name]
 
-paid = st.selectbox("Pullik darslar", ["yes", "no"])
-activities = st.selectbox("Darsdan tashqari faoliyat", ["yes", "no"])
-higher = st.selectbox("Oliy ta’lim olish istagi", ["yes", "no"])
+@st.cache_resource
+def load_model(path: str):
+    return joblib.load(path)
 
+# Model fayli bor-yo'qligini tekshirish
+if not os.path.exists(model_path):
+    st.error(
+        f"❌ Model fayli topilmadi: `{model_path}`\n\n"
+        "Iltimos, `.pkl` fayl shu papkada borligini tekshiring."
+    )
+    st.stop()
 
-# BASHORAT
+model = load_model(model_path)
 
-if st.button("📊 Natijani ko‘rish"):
-    input_df = pd.DataFrame([{
+st.subheader("📌 Kirish ma'lumotlari")
+
+# ===== Input form =====
+with st.form("student_form"):
+    age = st.number_input("Yosh", min_value=10, max_value=30, value=18, step=1)
+
+    traveltime = st.selectbox(
+        "Yo‘lga ketadigan vaqt (1-4)",
+        [1, 2, 3, 4],
+        index=0,
+        help="1 = juda yaqin, 4 = juda uzoq"
+    )
+
+    health = st.selectbox(
+        "Sog‘liq darajasi (1-5)",
+        [1, 2, 3, 4, 5],
+        index=2
+    )
+
+    absences = st.number_input(
+        "Dars qoldirishlar soni (Absences)",
+        min_value=0,
+        max_value=200,
+        value=5,
+        step=1
+    )
+
+    alcohol_level = st.slider("Ichimlik darajasi (0-5)", 0.0, 5.0, 1.0, 0.5)
+    parent_education_avg = st.slider("Ota-ona ta'limi o‘rtachasi (0-4)", 0.0, 4.0, 2.0, 0.5)
+    social_activity = st.slider("Ijtimoiy faollik (1-5)", 1.0, 5.0, 3.0, 0.5)
+    academic_risk = st.slider("Akademik xavf (0-5)", 0.0, 5.0, 1.0, 0.5)
+
+    # Model "yes/no" bilan o'rgatilgan — shuning uchun ichki qiymatlar shunday qoladi.
+    paid = st.selectbox("Pullik qo‘shimcha darsga qatnaydimi?", ["no", "yes"], index=0)
+    activities = st.selectbox("To‘garak / qo‘shimcha faoliyat bormi?", ["no", "yes"], index=0)
+    higher = st.selectbox("Oliy ta'limni davom ettirmoqchimi?", ["no", "yes"], index=1)
+
+    submitted = st.form_submit_button("🔮 Bashorat qilish")
+
+# ===== Prediction =====
+if submitted:
+    sample_df = pd.DataFrame([{
         "age": age,
         "traveltime": traveltime,
         "health": health,
@@ -87,12 +108,30 @@ if st.button("📊 Natijani ko‘rish"):
         "higher": higher
     }])
 
-    prediction = model.predict(input_df)[0]
-    confidence = model.predict_proba(input_df)[0][prediction]
+    pred = int(model.predict(sample_df)[0])
+
+    conf = None
+    if hasattr(model, "predict_proba"):
+        proba = model.predict_proba(sample_df)[0][pred]
+        conf = round(proba * 100, 2)
 
     st.markdown("---")
+    st.write(f"✅ Tanlangan model: **{model_name}**")
 
-    if prediction == 1:
-        st.success(f"✅ **Talaba O‘TDI!**\n\nIshonchlilik: **{confidence*100:.2f}%**")
+    if pred == 1:
+        st.success("🎉 Natija: **O‘TDI** (G3 >= 10)")
     else:
-        st.error(f"❌ **Talaba O‘TA OLMADI**\n\nIshonchlilik: **{confidence*100:.2f}%**")
+        st.error("⚠️ Natija: **O‘TMADI** (G3 < 10)")
+
+    if conf is not None:
+        st.info(f"📊 Ishonchlilik: **{conf}%**")
+
+    st.caption(f"Model fayli: {model_path}")
+
+st.markdown("---")
+st.info("""
+🎓 **Ilova haqida:**  
+Bu tizim Machine Learning modeli yordamida talabaning o‘qish natijasini bashorat qiladi.  
+Riskdagi talabalarni erta aniqlash va ta’lim sifatini oshirishga xizmat qiladi.  
+Natijalar faqat taxminiy hisoblanadi.
+""")
